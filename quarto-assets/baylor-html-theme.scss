@@ -1,0 +1,49 @@
+/*-- scss:defaults --*/
+
+// Base document colors
+$body-bg: #fefefe !default;
+$body-color: #000 !default;
+
+// Baylor green
+$link-color: #007A33;
+$link-color-hover: lighten($link-color, 15%);
+$selection-bg: lighten($link-color, 25%);
+$toc-color: #007A33;
+
+// Code blocks
+$code-block-bg-alpha: -.7;
+
+/*-- scss:rules --*/
+
+a {
+  color: #007A33 !important;
+}
+a:hover {
+  color: #1a9e4a !important;
+}
+
+// Title author separator line
+.quarto-title-author::before {
+  content: "";
+  display: block;
+  border: none;
+  background-color: #134e13;
+  color: #000;
+  height: 2px;
+  border-radius: 4px;
+  width: 100%;
+}
+
+// Inline code
+code {
+  font-size: 85%;
+  background-color: #afb8c133;
+  color: #000;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+// Code blocks
+div.sourceCode pre code {
+  background-color: #f5f5f5;
+}
