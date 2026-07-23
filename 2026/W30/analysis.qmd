@@ -1,0 +1,35 @@
+---
+title: "TidyTuesday — Week 30"
+subtitle: "2026-07-21"
+author:
+  - name: Your Name
+date: today
+format: html
+editor:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center"
+)
+```
+
+## Data
+
+Load the week's data from the `data/` folder:
+
+```{r load-data, eval=FALSE}
+library(readr)
+library(tidyverse)
+
+data <- read_csv("data/tidytuesday_2026_w30.csv")
+```
+
+## Analysis
+
+Start your analysis here.
