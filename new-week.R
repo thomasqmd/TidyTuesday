@@ -125,7 +125,7 @@ new_week <- function(
     '        href: https://github.com/thomasqmd',
     '        icon: github',
     '      - text: Website',
-    '        href: https://thomasqmd.quarto.pub/website/',
+    '        href: https://thomasqmd-website.share.connect.posit.cloud/',
     '        icon: globe',
     '      - text: LinkedIn',
     '        href: https://www.linkedin.com/in/thomas-reinke1',

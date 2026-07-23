@@ -1,9 +1,6 @@
 # Data files (re-downloadable)
 data/
 
-# HTML output
-*.html
-
 # Editor metadata
 .posit/
 *.Rproj.user/
