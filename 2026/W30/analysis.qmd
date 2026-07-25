@@ -61,6 +61,8 @@ library(janitor)
 library(kableExtra)
 library(plotly)
 library(patchwork)
+library(khroma)
+library(sf)
 conflicted::conflict_prefer("filter", "dplyr")
 conflicted::conflict_prefer("select", "dplyr")
 conflicted::conflicts_prefer(plotly::layout)
@@ -79,7 +81,7 @@ ggplot2::theme_set(ggplot2::theme_minimal())
 ggplot2::theme_update(panel.grid.minor = ggplot2::element_blank())
 ```
 
-# Week Name
+# Near-Death Experience Classifications
 
 ## Data
 
@@ -92,5 +94,119 @@ glimpse(data)
 
 ## Analysis
 
-Start your analysis here.
+This week's data contains 590 near-death experience (NDE) narratives collected from online databases, along with AI-derived classification flags and Greyson NDE Scale scores.
+
+### Classification by Gender
+
+The `classification` column reveals that not all narratives in this collection are actually near-death experiences. Some are classified as FDE (far-death experience), SDE (near-death experience without clinical death), or SMR (survivor's guilt memory). The strip plot below shows how these classifications distribute across genders.
+
+```{r vis-classification-strip}
+strip <- data |>
+  mutate(
+    gender = factor(gender, levels = c("M", "F"), labels = c("Male", "Female")),
+    classification = factor(classification, levels = c(
+      "NDE", "Probable NDE", "Possible NDE", "NDE-Like", "NDE-Like;NDE",
+      "FDE", "SDE", "SMR"
+    ))
+  ) |>
+  ggplot(aes(x = classification, y = gender, color = classification,
+             text = paste0("Classification: ", classification, "<br>Gender: ", gender))) +
+  geom_jitter(height = 0.15, width = 0.1, alpha = 0.7, size = 2) +
+  scale_color_muted() +
+  labs(
+    x = "Classification",
+    y = "Gender",
+    title = "NDE Classifications by Gender",
+    subtitle = "Each point represents one narrative (N = 589)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 15),
+    plot.subtitle = element_text(size = 11, color = "grey40"),
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    legend.position = "none",
+    plot.margin = margin(20, 20, 30, 20)
+  )
+
+ggplotly(strip, tooltip = "text")
+```
+
+### Geographic Distribution
+
+The vast majority of narratives come from the United States, but experiences are reported from over 20 countries. This map shows where these experiences were reported.
+
+```{r vis-geographic}
+# Prepare country mapping
+country_data <- data |>
+  count(country, sort = TRUE) |>
+  rename(region = country) |>
+  filter(!is.na(region), region != "unknown") |>
+  mutate(n = as.numeric(n))
+
+# Map country names to ISO3 codes for plot_ly
+iso_map <- tibble(
+  country = c("United States", "Canada", "Australia", "France", "England",
+              "Belgium", "New Zealand", "United Kingdom", "Mexico", "Argentina",
+              "Germany", "India", "Sweden", "Switzerland", "Poland",
+              "Britain", "Ireland", "Norway", "Netherlands", "Italy",
+              "Spain", "Portugal", "Japan", "South Africa", "Brazil",
+              "Russia", "China", "Egypt", "Turkey", "Kenya", "Colombia",
+              "Chile", "Venezuela", "Peru", "Greece", "Czech Republic",
+              "Denmark", "Finland", "Israel", "Lebanon", "Malaysia",
+              "Philippines", "Singapore", "Taiwan", "Thailand", "UAE",
+              "Uganda", "Zimbabwe"),
+  iso3 = c("USA", "CAN", "AUS", "FRA", NA,
+           "BEL", "NZL", "GBR", "MEX", "ARG",
+           "DEU", "IND", "SWE", "CHE", "POL",
+           NA, "IRL", "NOR", "NLD", "ITA",
+           "ESP", "PRT", "JPN", "ZAF", "BRA",
+           "RUS", "CHN", "EGY", "TUR", "KEN", "COL",
+           "CHL", "VEN", "PER", "GRC", "CZE",
+           "DNK", "FIN", "ISR", "LBN", "MYS",
+           "PHL", "SGP", "TWN", "THA", "ARE",
+           "UGA", "ZWE")
+)
+
+# Merge with country counts
+country_counts <- iso_map |>
+  left_join(country_data, by = c("country" = "region")) |>
+  filter(!is.na(iso3), !is.na(n))
+
+# Create choropleth
+plot_ly(
+  type = "choropleth",
+  locations = country_counts$iso3,
+  z = country_counts$n,
+  text = paste0("<b>", country_counts$country, "</b><br>Count: ", country_counts$n),
+  colorscale = list(
+    c(0, "#FFFFCC"),
+    c(0.2, "#CCEBC5"),
+    c(0.4, "#78C679"),
+    c(0.6, "#41AB5D"),
+    c(0.8, "#238443"),
+    c(1.0, "#00441B")
+  ),
+  colorbar = list(title = "Count"),
+  hoverinfo = "text"
+) |>
+  layout(
+    title = list(
+      text = "Geographic Distribution of NDE Narratives",
+      font = list(size = 15, family = "sans-serif")
+    ),
+    subtitle = list(
+      text = "Experiences reported by country (N = 589)",
+      font = list(size = 11, color = rgb(0.25, 0.25, 0.25))
+    ),
+    geo = list(
+      showframe = FALSE,
+      showcoastlines = TRUE,
+      coastlinecolor = "grey80",
+      projection = list(type = "natural earth"),
+      bgcolor = "white",
+      landcolor = "grey92"
+    ),
+    margin = list(t = 80, b = 40, l = 40, r = 40)
+  )
+```
 
