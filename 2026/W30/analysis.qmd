@@ -67,15 +67,15 @@ conflicted::conflict_prefer("filter", "dplyr")
 conflicted::conflict_prefer("select", "dplyr")
 conflicted::conflicts_prefer(plotly::layout)
 knitr::opts_chunk$set(
-  comment = "#>",
-  message = FALSE,
-  warning = FALSE,
-  cache = FALSE,
-  echo = TRUE,
-  eval = TRUE,
-  tidy.opts = list(width.cutoff = 100),
-  tidy = FALSE,
-  fig.align = "center"
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE,
+    cache = FALSE,
+    echo = TRUE,
+    eval = TRUE,
+    tidy.opts = list(width.cutoff = 100),
+    tidy = FALSE,
+    fig.align = "center"
 )
 ggplot2::theme_set(ggplot2::theme_minimal())
 ggplot2::theme_update(panel.grid.minor = ggplot2::element_blank())
@@ -96,117 +96,239 @@ glimpse(data)
 
 This week's data contains 590 near-death experience (NDE) narratives collected from online databases, along with AI-derived classification flags and Greyson NDE Scale scores.
 
-### Classification by Gender
+### Classification and Thematic Elements by Gender
 
-The `classification` column reveals that not all narratives in this collection are actually near-death experiences. Some are classified as FDE (far-death experience), SDE (near-death experience without clinical death), or SMR (survivor's guilt memory). The strip plot below shows how these classifications distribute across genders.
+The near-death experience dataset includes 589 narratives (339 female, 250 male). Beyond the primary classification of near-death experiences (NDE, Probable NDE, Possible NDE, NDE-Like, FDE, SDE, SMR), the collection includes AI-extracted flags indicating specific experiential themes.
 
-```{r vis-classification-strip}
-strip <- data |>
-  mutate(
-    gender = factor(gender, levels = c("M", "F"), labels = c("Male", "Female")),
-    classification = factor(classification, levels = c(
-      "NDE", "Probable NDE", "Possible NDE", "NDE-Like", "NDE-Like;NDE",
-      "FDE", "SDE", "SMR"
-    ))
-  ) |>
-  ggplot(aes(x = classification, y = gender, color = classification,
-             text = paste0("Classification: ", classification, "<br>Gender: ", gender))) +
-  geom_jitter(height = 0.15, width = 0.1, alpha = 0.7, size = 2) +
-  scale_color_muted() +
-  labs(
-    x = "Classification",
-    y = "Gender",
-    title = "NDE Classifications by Gender",
-    subtitle = "Each point represents one narrative (N = 589)"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 15),
-    plot.subtitle = element_text(size = 11, color = "grey40"),
-    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
-    legend.position = "none",
-    plot.margin = margin(20, 20, 30, 20)
-  )
+The visualizations below examine gender distributions across both narrative classifications and thematic elements:
 
-ggplotly(strip, tooltip = "text")
+```{r vis-gender-breakdown}
+#| fig.height: 8
+#| fig.width: 10
+
+data_gender <- data |>
+    filter(!is.na(gender)) |>
+    mutate(
+        gender = factor(gender, levels = c("M", "F"), labels = c("Male", "Female")),
+        classification = factor(classification, levels = c(
+            "NDE", "Probable NDE", "Possible NDE", "NDE-Like", "NDE-Like;NDE", "FDE", "SDE", "SMR"
+        ))
+    )
+
+# Panel 1: Classification Counts and Category Shares
+class_df <- data_gender |>
+    count(classification, gender) |>
+    group_by(classification) |>
+    mutate(total = sum(n), pct = n / total * 100) |>
+    ungroup()
+
+p_class <- class_df |>
+    ggplot(aes(
+        x = classification, y = n, fill = gender,
+        text = paste0(
+            "<b>Classification:</b> ", classification,
+            "<br><b>Gender:</b> ", gender,
+            "<br><b>Narrative Count:</b> ", n,
+            "<br><b>Category Share:</b> ", round(pct, 1), "%"
+        )
+    )) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.9) +
+    khroma::scale_fill_vibrant() +
+    labs(
+        title = "NDE Classification Counts by Gender",
+        subtitle = "Breakdown of reported experience types across Male (N=250) and Female (N=339)",
+        x = "Classification Category", y = "Number of Narratives", fill = "Gender"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+        plot.title = element_text(face = "bold", size = 13),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "top"
+    )
+
+# Panel 2: Core NDE Thematic Element Counts
+ai_df <- data_gender |>
+    pivot_longer(cols = starts_with("ai_"), names_to = "feature", values_to = "present") |>
+    group_by(gender, feature) |>
+    summarise(
+        count = sum(present, na.rm = TRUE),
+        total_gender = n(),
+        pct = count / total_gender * 100,
+        .groups = "drop"
+    ) |>
+    mutate(
+        feature_clean = case_when(
+            feature == "ai_clinical" ~ "Clinical Death",
+            feature == "ai_obe" ~ "Out-of-Body (OBE)",
+            feature == "ai_esp" ~ "ESP / Telepathy",
+            feature == "ai_unity" ~ "Universal Unity",
+            feature == "ai_hellish" ~ "Hellish Experience",
+            feature == "ai_world_future" ~ "Future Vision",
+            feature == "ai_past_lives" ~ "Past Lives",
+            feature == "ai_aliens" ~ "Alien Entities",
+            TRUE ~ feature
+        )
+    )
+
+feat_order <- ai_df |>
+    group_by(feature_clean) |>
+    summarise(total_cases = sum(count)) |>
+    arrange(total_cases) |>
+    pull(feature_clean)
+
+ai_df <- ai_df |> mutate(feature_clean = factor(feature_clean, levels = feat_order))
+
+p_feat <- ai_df |>
+    ggplot(aes(
+        x = feature_clean, y = count, fill = gender,
+        text = paste0(
+            "<b>Thematic Element:</b> ", feature_clean,
+            "<br><b>Gender:</b> ", gender,
+            "<br><b>Narrative Count:</b> ", count,
+            "<br><b>Prevalence within Gender:</b> ", round(pct, 1), "%"
+        )
+    )) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.9) +
+    coord_flip() +
+    khroma::scale_fill_vibrant() +
+    labs(
+        title = "Counts of Core NDE Elements by Gender",
+        subtitle = "Number of narratives containing specific experiential features",
+        x = NULL, y = "Number of Narratives", fill = "Gender"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+        plot.title = element_text(face = "bold", size = 13),
+        legend.position = "top"
+    )
+
+p_class / p_feat
 ```
 
-### Geographic Distribution
 
-The vast majority of narratives come from the United States, but experiences are reported from over 20 countries. This map shows where these experiences were reported.
+### Geographic Distribution Over Time
 
-```{r vis-geographic}
-# Prepare country mapping
-country_data <- data |>
-  count(country, sort = TRUE) |>
-  rename(region = country) |>
-  filter(!is.na(region), region != "unknown") |>
-  mutate(n = as.numeric(n))
+The collection contains experiences reported from around the world across several decades (1936–2024). To analyze how reporting expanded geographically, all raw location strings were standardized into ISO3 country codes and tracked by experience year (`exp_date`).
 
-# Map country names to ISO3 codes for plot_ly
-iso_map <- tibble(
-  country = c("United States", "Canada", "Australia", "France", "England",
-              "Belgium", "New Zealand", "United Kingdom", "Mexico", "Argentina",
-              "Germany", "India", "Sweden", "Switzerland", "Poland",
-              "Britain", "Ireland", "Norway", "Netherlands", "Italy",
-              "Spain", "Portugal", "Japan", "South Africa", "Brazil",
-              "Russia", "China", "Egypt", "Turkey", "Kenya", "Colombia",
-              "Chile", "Venezuela", "Peru", "Greece", "Czech Republic",
-              "Denmark", "Finland", "Israel", "Lebanon", "Malaysia",
-              "Philippines", "Singapore", "Taiwan", "Thailand", "UAE",
-              "Uganda", "Zimbabwe"),
-  iso3 = c("USA", "CAN", "AUS", "FRA", NA,
-           "BEL", "NZL", "GBR", "MEX", "ARG",
-           "DEU", "IND", "SWE", "CHE", "POL",
-           NA, "IRL", "NOR", "NLD", "ITA",
-           "ESP", "PRT", "JPN", "ZAF", "BRA",
-           "RUS", "CHN", "EGY", "TUR", "KEN", "COL",
-           "CHL", "VEN", "PER", "GRC", "CZE",
-           "DNK", "FIN", "ISR", "LBN", "MYS",
-           "PHL", "SGP", "TWN", "THA", "ARE",
-           "UGA", "ZWE")
+The interactive map below incorporates an **animated timeline** (1950–2024). Press **Play** or drag the slider to observe how reported experiences accumulated across different countries over time.
+
+```{r vis-geographic-animated}
+# Standardize location entries
+country_clean_map <- c(
+    "American Samoa" = "USA", "Argentina" = "ARG", "Australia" = "AUS", "Austria" = "AUT",
+    "Belgium" = "BEL", "Brazil" = "BRA", "Bridgeport" = "USA", "Britain" = "GBR",
+    "Bulgaria" = "BGR", "Canada" = "CAN", "Costa Rica" = "CRI", "Cuba" = "CUB",
+    "Cyprus" = "CYP", "Denmark" = "DNK", "Dominican Republic" = "DOM", "Egypt" = "EGY",
+    "England" = "GBR", "France" = "FRA", "Geneva" = "CHE", "Germany" = "DEU",
+    "Ghana" = "GHA", "India" = "IND", "Iowa" = "USA", "Iran" = "IRN", "Ireland" = "IRL",
+    "Israel" = "ISR", "Italy" = "ITA", "Jerusalem" = "ISR", "Kentucky" = "USA",
+    "Macau" = "MAC", "Malta" = "MLT", "Mexico" = "MEX", "Nederland" = "NLD",
+    "Netherlands" = "NLD", "New Zealand" = "NZL", "Norway" = "NOR", "Nova Scotia" = "CAN",
+    "Ohio" = "USA", "Oregon" = "USA", "Philippines" = "PHL", "Poland" = "POL",
+    "polska" = "POL", "Russia" = "RUS", "Saudi Arabia" = "SAU", "South Africa" = "ZAF",
+    "South Korea" = "KOR", "Soviet Union" = "RUS", "Spain" = "ESP", "Sweden" = "SWE",
+    "Switzerland" = "CHE", "Taiwan" = "TWN", "Tennessee" = "USA", "Trinidad" = "TTO",
+    "U" = "USA", "Ukraine" = "UKR", "United Kingdom" = "GBR", "United States" = "USA",
+    "Venezuela" = "VEN", "Vietnam" = "VNM", "Wales" = "GBR"
 )
 
-# Merge with country counts
-country_counts <- iso_map |>
-  left_join(country_data, by = c("country" = "region")) |>
-  filter(!is.na(iso3), !is.na(n))
+iso_to_name <- c(
+    "USA" = "United States", "ARG" = "Argentina", "AUS" = "Australia", "AUT" = "Austria",
+    "BEL" = "Belgium", "BRA" = "Brazil", "GBR" = "United Kingdom", "BGR" = "Bulgaria",
+    "CAN" = "Canada", "CRI" = "Costa Rica", "CUB" = "Cuba", "CYP" = "Cyprus",
+    "DNK" = "Denmark", "DOM" = "Dominican Republic", "EGY" = "Egypt", "FRA" = "France",
+    "CHE" = "Switzerland", "DEU" = "Germany", "GHA" = "Ghana", "IND" = "India",
+    "IRN" = "Iran", "IRL" = "Ireland", "ISR" = "Israel", "ITA" = "Italy",
+    "MAC" = "Macau", "MLT" = "Malta", "MEX" = "Mexico", "NLD" = "Netherlands",
+    "NZL" = "New Zealand", "NOR" = "Norway", "PHL" = "Philippines", "POL" = "Poland",
+    "RUS" = "Russia", "SAU" = "Saudi Arabia", "ZAF" = "South Africa", "KOR" = "South Korea",
+    "ESP" = "Spain", "SWE" = "Sweden", "TWN" = "Taiwan", "TTO" = "Trinidad & Tobago",
+    "UKR" = "Ukraine", "VEN" = "Venezuela", "VNM" = "Vietnam"
+)
 
-# Create choropleth
+df_clean <- data |>
+    mutate(
+        iso3 = country_clean_map[country],
+        exp_year = year(exp_date)
+    ) |>
+    filter(!is.na(iso3), !is.na(exp_year))
+
+# Build cumulative yearly grid for animation (1950 to 2024)
+years_range <- 1950:2024
+all_iso3 <- unique(df_clean$iso3)
+
+yearly_counts <- df_clean |>
+    filter(exp_year >= 1950) |>
+    count(exp_year, iso3, name = "year_n") |>
+    complete(exp_year = years_range, iso3 = all_iso3, fill = list(year_n = 0)) |>
+    arrange(iso3, exp_year) |>
+    group_by(iso3) |>
+    mutate(
+        cum_n = cumsum(year_n),
+        cum_n_log = log10(cum_n + 1),
+        country_name = iso_to_name[iso3]
+    ) |>
+    ungroup() |>
+    mutate(
+        hover_text = paste0(
+            "<b>", country_name, " (", iso3, ")</b>",
+            "<br><b>Year:</b> ", exp_year,
+            "<br><b>New Reports in Year:</b> ", year_n,
+            "<br><b>Cumulative Reports (1950–", exp_year, "):</b> ", cum_n
+        )
+    )
+
+max_cum_log <- max(yearly_counts$cum_n_log)
+tick_vals <- c(0, 1, 5, 20, 50, 150, 350)
+
+# Convert Paul Tol sequential palette from khroma to Plotly colorscale format
+pt_colorscale <- function(palette_name = "YlOrBr", n = 9) {
+    cols <- as.character(khroma::color(palette_name)(n))
+    seqs <- seq(0, 1, length.out = n)
+    lapply(seq_along(seqs), function(i) list(seqs[i], cols[i]))
+}
+
+# Animated choropleth map with log-scaled Paul Tol color scale
 plot_ly(
-  type = "choropleth",
-  locations = country_counts$iso3,
-  z = country_counts$n,
-  text = paste0("<b>", country_counts$country, "</b><br>Count: ", country_counts$n),
-  colorscale = list(
-    c(0, "#FFFFCC"),
-    c(0.2, "#CCEBC5"),
-    c(0.4, "#78C679"),
-    c(0.6, "#41AB5D"),
-    c(0.8, "#238443"),
-    c(1.0, "#00441B")
-  ),
-  colorbar = list(title = "Count"),
-  hoverinfo = "text"
+    data = yearly_counts,
+    type = "choropleth",
+    locations = ~iso3,
+    z = ~cum_n_log,
+    zmin = 0,
+    zmax = max_cum_log,
+    text = ~hover_text,
+    frame = ~exp_year,
+    colorscale = pt_colorscale("YlOrBr"),
+    colorbar = list(
+        title = "Cumulative<br>Reports",
+        tickvals = log10(tick_vals + 1),
+        ticktext = as.character(tick_vals)
+    ),
+    hoverinfo = "text"
 ) |>
-  layout(
-    title = list(
-      text = "Geographic Distribution of NDE Narratives",
-      font = list(size = 15, family = "sans-serif")
-    ),
-    subtitle = list(
-      text = "Experiences reported by country (N = 589)",
-      font = list(size = 11, color = rgb(0.25, 0.25, 0.25))
-    ),
-    geo = list(
-      showframe = FALSE,
-      showcoastlines = TRUE,
-      coastlinecolor = "grey80",
-      projection = list(type = "natural earth"),
-      bgcolor = "white",
-      landcolor = "grey92"
-    ),
-    margin = list(t = 80, b = 40, l = 40, r = 40)
-  )
+    layout(
+        title = list(
+            text = "<b>Global Spatio-Temporal Distribution of NDE Reports (1950–2024)</b>",
+            font = list(size = 15, family = "sans-serif")
+        ),
+        geo = list(
+            showframe = FALSE,
+            showcoastlines = TRUE,
+            coastlinecolor = toRGB("grey70"),
+            projection = list(type = "natural earth"),
+            bgcolor = "white",
+            landcolor = toRGB("grey95")
+        ),
+        margin = list(t = 60, b = 40, l = 20, r = 20)
+    ) |>
+    animation_opts(
+        frame = 250,
+        transition = 100,
+        redraw = TRUE
+    ) |>
+    animation_slider(
+        currentvalue = list(prefix = "Year of Experience: ", font = list(color = "#2b5c8f", size = 14))
+    )
 ```
+
 
