@@ -80,16 +80,17 @@ new_week <- function(
     )
   }
   csv_filename <- csv_files[1]
-  cat(csv_filename, "\n")
+  cat(paste(csv_files, collapse = ", "), "\n")
 
-  csv_url <- paste0(
-    "https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/",
-    year,
-    "/",
-    release_date,
-    "/",
-    csv_filename
-  )
+  # Generate load-data lines dynamically for all CSV files
+  data_load_lines <- unlist(lapply(csv_files, function(f) {
+    var_name <- gsub("\\.csv$", "", f)
+    var_name <- gsub("-", "_", var_name)
+    c(
+      sprintf('%s <- read_csv("data/%s")', var_name, f),
+      sprintf('glimpse(%s)', var_name)
+    )
+  }))
 
   # Write the QMD file
   qmd_path <- file.path(week_folder, "analysis.qmd")
@@ -183,8 +184,7 @@ new_week <- function(
     'Load the week\'s data from the `data/` folder:',
     '',
     '```{r load-data}',
-    paste0('data <- read_csv("data/', csv_filename, '")'),
-    'glimpse(data)',
+    data_load_lines,
     '```',
     '',
     '## Analysis',
@@ -198,23 +198,39 @@ new_week <- function(
   # Create .gitkeep in data folder
   file.create(file.path(week_folder, "data", ".gitkeep"))
 
-  # Download the dataset from GitHub
-  csv_path <- file.path(week_folder, "data", csv_filename)
-  cat(sprintf("Downloading %s ... ", csv_url))
-  download.file(csv_url, csv_path, mode = "wb")
-  cat("done\n")
+  # Download all dataset CSVs from GitHub
+  csv_paths <- character(length(csv_files))
+  for (i in seq_along(csv_files)) {
+    f <- csv_files[i]
+    c_url <- paste0(
+      "https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/",
+      year,
+      "/",
+      release_date,
+      "/",
+      f
+    )
+    c_path <- file.path(week_folder, "data", f)
+    cat(sprintf("Downloading %s ... ", c_url))
+    download.file(c_url, c_path, mode = "wb")
+    cat("done\n")
+    csv_paths[i] <- c_path
+  }
 
   cat(sprintf("Created %s\n", week_folder))
   cat(sprintf("  Monday: %s\n", format(week_monday, "%Y-%m-%d")))
   cat(sprintf("  Sunday: %s\n", format(week_sunday, "%Y-%m-%d")))
   cat(sprintf("  QMD:    %s\n", qmd_path))
-  cat(sprintf("  Data:   %s\n", csv_path))
+  cat(sprintf("  Data:   %s\n", paste(csv_paths, collapse = ", ")))
 
   invisible(list(
     path = week_folder,
     qmd = qmd_path,
-    csv = csv_path,
+    csv = csv_paths,
     monday = week_monday,
     sunday = week_sunday
   ))
 }
+
+cat("Loaded new_week() function. Run `new_week()` in R to create the week folder.\n")
+

@@ -1,0 +1,269 @@
+---
+title: "TidyTuesday — Week 31"
+subtitle: "2026-08-02"
+author:
+  - name: Thomas Reinke
+    affiliation:
+      - name: Baylor University
+        department: Statistics Department
+        city: Waco
+        state: TX
+        country: US
+        url: https://www.baylor.edu
+    email: thomas_reinke1@baylor.edu
+date-format: "MMMM d, yyyy"
+format:
+  html:
+    code-tools:
+      source: false
+    page-layout: full
+    toc-expand: 2
+    anchor-sections: false
+    citations-hover: true
+    footnotes-hover: true
+    crossrefs-hover: true
+    toc-location: right
+    other-links:
+      - text: GitHub
+        href: https://github.com/thomasqmd
+        icon: github
+      - text: Website
+        href: https://thomasqmd-website.share.connect.posit.cloud/
+        icon: globe
+      - text: LinkedIn
+        href: https://www.linkedin.com/in/thomas-reinke1
+        icon: linkedin
+theme: [materia, ../../quarto-assets/baylor-html-theme.scss]
+code-fold: true
+code-overflow: wrap
+highlight-style: a11y
+toc: true
+toc-depth: 4
+number-sections: false
+callout-appearance: minimal
+lightbox:
+  loop: true
+embed-resources: true
+editor:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(conflicted)
+library(janitor)
+library(kableExtra)
+library(plotly)
+library(patchwork)
+library(scales)
+library(htmltools)
+library(viridis)
+library(sf)
+library(maps)
+library(khroma)
+
+conflicted::conflict_prefer("filter", "dplyr")
+conflicted::conflict_prefer("select", "dplyr")
+conflicted::conflicts_prefer(plotly::layout)
+
+knitr::opts_chunk$set(
+    comment = "#>",
+    message = FALSE,
+    warning = FALSE,
+    cache = FALSE,
+    echo = TRUE,
+    eval = TRUE,
+    tidy.opts = list(width.cutoff = 100),
+    tidy = FALSE,
+    fig.align = "center"
+)
+
+ggplot2::theme_set(ggplot2::theme_minimal())
+ggplot2::theme_update(panel.grid.minor = ggplot2::element_blank())
+```
+
+# Week 31: Australian Biodiversity, Tourism & Climate
+
+```{r load-data}
+occurrences <- read_csv("data/occurrences.csv")
+tourism <- read_csv("data/tourism.csv")
+weather <- read_csv("data/weather.csv")
+
+# Paul Tol color palette for species groups (khroma bright)
+species_colors <- c(
+    "Glowworm" = "#228833", # Paul Tol Green
+    "Gouldian finch" = "#EE6677", # Paul Tol Red/Pink
+    "Manta ray" = "#4477AA", # Paul Tol Blue
+    "Orchid" = "#AA3377" # Paul Tol Purple
+)
+
+# Paul Tol color palette for tourism purpose
+purpose_colors <- c(
+    "Holiday"  = "#4477AA", # Paul Tol Blue
+    "Business" = "#EE6677" # Paul Tol Red/Rose
+)
+```
+
+## Dataset Overview
+
+```{r dataset-summary}
+summary_tbl <- tibble(
+    Dataset = c("Occurrences (Biodiversity)", "Tourism (Domestic Trips)", "Weather (Daily Records)"),
+    Records = c(nrow(occurrences), nrow(tourism), nrow(weather)),
+    Variables = c(ncol(occurrences), ncol(tourism), ncol(weather)),
+    `Time Horizon` = c("2014 – 2024", "2014 – 2022", "2014 – 2024"),
+    `Key Entities` = c("4 Organism Groups (Orchid, Finch, Manta, Glowworm)", "445 Regions & 2 Travel Purposes", "11 Primary Weather Stations")
+)
+
+summary_tbl %>%
+    kbl(caption = "Overview of TidyTuesday Week 31 Datasets", align = "lcccc") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE)
+```
+
+## Visualizations
+
+### Visualization 1: Australian Wildlife Occurrences & Weather Network (2014–2024)
+
+```{r viz1-occurrences, fig.height=7.5, fig.width=10.5}
+aus_map <- sf::st_as_sf(maps::map("world", "Australia", plot = FALSE, fill = TRUE))
+
+# Join all occurrences with daily weather observations
+occ_w <- occurrences %>%
+    filter(!is.na(obs_lat), !is.na(obs_lon), year >= 2014, year <= 2024) %>%
+    left_join(
+        weather %>% select(ws_id, date, temp, prcp),
+        by = c("ws_id", "date")
+    ) %>%
+    mutate(
+        year = as.integer(year),
+        organism_name = factor(organism_name, levels = c("Orchid", "Gouldian finch", "Manta ray", "Glowworm"))
+    ) %>%
+    arrange(year, organism_name) %>%
+    group_by(year) %>%
+    mutate(obs_id = paste0(year, "_", row_number())) %>%
+    ungroup()
+
+# Weather station summaries
+ws_summary <- weather %>%
+    group_by(ws_id, stn_lat, stn_lon) %>%
+    summarize(
+        mean_temp = mean(temp, na.rm = TRUE),
+        total_rain = sum(prcp, na.rm = TRUE),
+        .groups = "drop"
+    )
+
+p1 <- ggplot() +
+    # Base map
+    geom_sf(data = aus_map, fill = "#F7F7F5", color = "#666666", linewidth = 0.4) +
+    # Layer 1: Outlined Organism Observations (all points)
+    geom_point(
+        data = occ_w,
+        aes(
+            x = obs_lon,
+            y = obs_lat,
+            fill = organism_name,
+            frame = year,
+            ids = obs_id,
+            text = paste0(
+                "<b>", organism_name, "</b><br>",
+                "Date: ", date, "<br>",
+                "State: ", ifelse(is.na(obs_state), "Unspecified", obs_state), "<br>",
+                "Temp: ", ifelse(is.na(temp), "N/A", paste0(round(temp, 1), "°C")), "<br>",
+                "Precipitation: ", ifelse(is.na(prcp), "N/A", paste0(round(prcp, 1), " mm"))
+            )
+        ),
+        shape = 21,
+        color = "#222222",
+        stroke = 0.35,
+        alpha = 0.8,
+        size = 2.0
+    ) +
+    # Layer 2: Weather Stations ON TOP (shape 24 filled triangles with high-contrast white stroke)
+    geom_point(
+        data = ws_summary,
+        aes(
+            x = stn_lon,
+            y = stn_lat,
+            text = paste0(
+                "<b>Weather Station: ", ws_id, "</b><br>",
+                "Mean Temp: ", round(mean_temp, 1), "°C<br>",
+                "Total Precip: ", round(total_rain, 0), " mm"
+            )
+        ),
+        shape = 24,
+        fill = "#111111",
+        color = "#FFFFFF",
+        stroke = 0.25,
+        size = 3
+    ) +
+    scale_fill_manual(values = species_colors, name = "Organism") +
+    guides(fill = guide_legend(override.aes = list(alpha = 1))) +
+    coord_sf(xlim = c(112, 155), ylim = c(-44, -10), expand = FALSE) +
+    theme_minimal() +
+    labs(
+        title = "Australian Wildlife Occurrences & Weather Network (2014–2024)",
+        x = "Longitude",
+        y = "Latitude"
+    )
+
+ggplotly(p1, tooltip = "text") %>%
+    animation_opts(frame = 900, transition = 0, redraw = TRUE) %>%
+    animation_slider(currentvalue = list(prefix = "Year: ", font = list(color = "#333333", size = 14)))
+```
+
+### Visualization 2: Australian Regional Tourism Observations by Travel Purpose (2014–2022)
+
+```{r viz2-tourism-map, fig.height=7.5, fig.width=10.5}
+# Individual Regional Tourism Observations by Travel Purpose (Business plotted on top of Holiday)
+tourism_indiv <- tourism %>%
+    filter(!is.na(lat), !is.na(lon), !is.na(region), !is.na(purpose), year >= 2014, year <= 2022) %>%
+    mutate(
+        year = as.integer(year),
+        purpose = factor(purpose, levels = c("Holiday", "Business"))
+    ) %>%
+    arrange(year, purpose) %>%
+    group_by(year) %>%
+    mutate(obs_id = paste0(year, "_", row_number())) %>%
+    ungroup()
+
+p2 <- ggplot() +
+    # Base map
+    geom_sf(data = aus_map, fill = "#F7F7F5", color = "#666666", linewidth = 0.4) +
+    # Individual Regional Tourism Observations split by Purpose (Holiday first, Business on top)
+    geom_point(
+        data = tourism_indiv,
+        aes(
+            x = lon,
+            y = lat,
+            fill = purpose,
+            frame = year,
+            ids = obs_id,
+            text = paste0(
+                "<b>Tourism Region: ", region, "</b><br>",
+                "Purpose: ", purpose, "<br>",
+                "Quarter: Q", quarter, "<br>",
+                "Trips: ", round(trips, 1), " Thousand"
+            )
+        ),
+        shape = 21,
+        color = "#222222",
+        stroke = 0.3,
+        alpha = 0.15,
+        size = 1.5
+    ) +
+    scale_fill_manual(values = purpose_colors, name = "Travel Purpose") +
+    guides(fill = guide_legend(override.aes = list(alpha = 1))) +
+    coord_sf(xlim = c(112, 155), ylim = c(-44, -10), expand = FALSE) +
+    theme_minimal() +
+    labs(
+        title = "Australian Regional Tourism Observations by Travel Purpose (2014–2022)",
+        x = "Longitude",
+        y = "Latitude"
+    )
+
+ggplotly(p2, tooltip = "text") %>%
+    animation_opts(frame = 900, transition = 0, redraw = TRUE) %>%
+    animation_slider(currentvalue = list(prefix = "Year: ", font = list(color = "#333333", size = 14)))
+```
